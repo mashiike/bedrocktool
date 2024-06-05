@@ -24,6 +24,14 @@ func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient) {
 	defer cleanup()
 	d := NewWithClient(client)
 	var isUse atomic.Bool
+	var totalInputTokens, totalOutputTokens atomic.Int64
+	d.OnAfterModelCall(func(_ context.Context, _ *bedrockruntime.ConverseInput, output *bedrockruntime.ConverseOutput) {
+		if output.Usage != nil {
+			tb.Logf("after model call: input tokens: %d, output tokens: %d", *output.Usage.InputTokens, *output.Usage.OutputTokens)
+			totalInputTokens.Add(int64(*output.Usage.InputTokens))
+			totalOutputTokens.Add(int64(*output.Usage.OutputTokens))
+		}
+	})
 	d.Register(
 		"clock",
 		"Return current time in RFC3339 format",
@@ -55,6 +63,11 @@ func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient) {
 	})
 	require.NoError(tb, err)
 	require.True(tb, isUse.Load())
+	tb.Log("total input tokens:", totalInputTokens.Load())
+	require.Greater(tb, totalInputTokens.Load(), int64(1))
+	tb.Log("total output tokens:", totalOutputTokens.Load())
+	require.Greater(tb, totalOutputTokens.Load(), int64(1))
+
 	for _, msg := range output {
 		for _, content := range msg.Content {
 			switch c := content.(type) {
@@ -174,6 +187,10 @@ func testDispacherConverseWithMock(tb testing.TB) {
 			},
 		},
 		StopReason: types.StopReasonToolUse,
+		Usage: &types.TokenUsage{
+			InputTokens:  aws.Int32(1),
+			OutputTokens: aws.Int32(1),
+		},
 	}, nil)
 	//2nd-time
 	client.On("Converse", mock.Anything, &bedrockruntime.ConverseInput{
@@ -248,6 +265,10 @@ func testDispacherConverseWithMock(tb testing.TB) {
 			},
 		},
 		StopReason: types.StopReasonEndTurn,
+		Usage: &types.TokenUsage{
+			InputTokens:  aws.Int32(1),
+			OutputTokens: aws.Int32(1),
+		},
 	}, nil)
 	testDispacherConverse(tb, client)
 }
