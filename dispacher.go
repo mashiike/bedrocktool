@@ -278,7 +278,7 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 					wg.Done()
 				}()
 				d.handleBeforeToolUse(ctx, c)
-				toolResultBlock, err := worker.Execute(toolUseCtx, c.Value.Input)
+				toolResultBlock, err := worker.Execute(toolUseCtx, c.Value)
 				if err != nil {
 					toolResultBlock = types.ToolResultBlock{
 						Content: []types.ToolResultContentBlock{

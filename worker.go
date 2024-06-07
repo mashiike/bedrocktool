@@ -12,20 +12,20 @@ import (
 
 type Worker interface {
 	InputSchema() document.Interface
-	Execute(context.Context, document.Interface) (types.ToolResultBlock, error)
+	Execute(context.Context, types.ToolUseBlock) (types.ToolResultBlock, error)
 }
 
 type reflectWorker struct {
 	inputSchema document.Interface
-	execFunc    func(context.Context, document.Interface) (types.ToolResultBlock, error)
+	execFunc    func(context.Context, types.ToolUseBlock) (types.ToolResultBlock, error)
 }
 
 func (w *reflectWorker) InputSchema() document.Interface {
 	return w.inputSchema
 }
 
-func (w *reflectWorker) Execute(ctx context.Context, input document.Interface) (types.ToolResultBlock, error) {
-	return w.execFunc(ctx, input)
+func (w *reflectWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock) (types.ToolResultBlock, error) {
+	return w.execFunc(ctx, toolUse)
 }
 
 type EmptyWorkerInput struct{}
@@ -48,9 +48,11 @@ func NewWorker[T any](f func(context.Context, T) (types.ToolResultBlock, error))
 	delete(m, "$schema")
 	return &reflectWorker{
 		inputSchema: document.NewLazyDocument(m),
-		execFunc: func(ctx context.Context, input document.Interface) (types.ToolResultBlock, error) {
+		execFunc: func(ctx context.Context, toolUse types.ToolUseBlock) (types.ToolResultBlock, error) {
+			ctx = withToolName(ctx, *toolUse.Name)
+			ctx = withToolUseID(ctx, *toolUse.ToolUseId)
 			var value T
-			if err := input.UnmarshalSmithyDocument(&value); err != nil {
+			if err := toolUse.Input.UnmarshalSmithyDocument(&value); err != nil {
 				return types.ToolResultBlock{}, err
 			}
 			return f(ctx, value)

@@ -72,3 +72,21 @@ func FromContext(ctx context.Context) (*ConverseContext, bool) {
 	cc, ok := ctx.Value(contextKey).(*ConverseContext)
 	return cc, ok
 }
+
+func withToolName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, contextKey, name)
+}
+
+func withToolUseID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, contextKey, id)
+}
+
+func ToolName(ctx context.Context) string {
+	name, _ := ctx.Value(contextKey).(string)
+	return name
+}
+
+func ToolUseID(ctx context.Context) string {
+	id, _ := ctx.Value(contextKey).(string)
+	return id
+}
