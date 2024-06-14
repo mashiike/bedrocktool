@@ -95,7 +95,11 @@ func (w *Worker) Fetcher() Fetcher {
 func (w *Worker) SetFetcher(f Fetcher) {
 	if f == nil {
 		f = FetcherFunc(func(ctx context.Context, u *url.URL) (<-chan string, error) {
-			resp, err := http.Get(u.String())
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create request; %w", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch url; %w", err)
 			}
