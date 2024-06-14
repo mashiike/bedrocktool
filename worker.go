@@ -30,7 +30,7 @@ func (w *reflectWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock)
 
 type EmptyWorkerInput struct{}
 
-func NewWorker[T any](f func(context.Context, T) (types.ToolResultBlock, error)) Worker {
+func GenerateInputSchemaDocument[T any]() (document.Interface, error) {
 	var v T
 	r := jsonschema.Reflector{
 		DoNotReference: true,
@@ -39,20 +39,32 @@ func NewWorker[T any](f func(context.Context, T) (types.ToolResultBlock, error))
 	schema := r.Reflect(v)
 	bs, err := json.Marshal(schema)
 	if err != nil {
-		panic(fmt.Errorf("bedrock tool: failed to marshal schema: %w", err))
+		return nil, fmt.Errorf("failed to marshal schema: %w", err)
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(bs, &m); err != nil {
-		panic(fmt.Errorf("bedrock tool: failed to unmarshal schema: %w", err))
+		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
 	}
 	delete(m, "$schema")
+	return document.NewLazyDocument(m), nil
+}
+
+func NewWorker[T any](f func(context.Context, T) (types.ToolResultBlock, error)) Worker {
+	inputSchema, err := GenerateInputSchemaDocument[T]()
+	if err != nil {
+		panic(fmt.Errorf("bedrock tool: %w", err))
+	}
 	return &reflectWorker{
-		inputSchema: document.NewLazyDocument(m),
+		inputSchema: inputSchema,
 		execFunc: func(ctx context.Context, toolUse types.ToolUseBlock) (types.ToolResultBlock, error) {
 			ctx = withToolName(ctx, *toolUse.Name)
 			ctx = withToolUseID(ctx, *toolUse.ToolUseId)
 			var value T
-			if err := toolUse.Input.UnmarshalSmithyDocument(&value); err != nil {
+			bs, err := toolUse.Input.MarshalSmithyDocument()
+			if err != nil {
+				return types.ToolResultBlock{}, err
+			}
+			if err := json.Unmarshal(bs, &value); err != nil {
 				return types.ToolResultBlock{}, err
 			}
 			return f(ctx, value)
