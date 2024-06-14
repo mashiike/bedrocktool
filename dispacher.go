@@ -18,17 +18,10 @@ type BedrockConverseAPIClient interface {
 	Converse(ctx context.Context, params *bedrockruntime.ConverseInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
 }
 
-type workerEntry struct {
-	tool    types.Tool
-	worker  Worker
-	enabler func(context.Context) bool
-}
-
 // Dispacher is a tool use dispacher. It is used to send messages to the specified Amazon Bedrock model.
 type Dispacher struct {
-	err               error
 	mu                sync.RWMutex
-	entries           map[string]workerEntry
+	toolSet           *ToolSet
 	client            BedrockConverseAPIClient
 	logger            *slog.Logger
 	onBeforeModelCall func(context.Context, *bedrockruntime.ConverseInput)
@@ -52,8 +45,9 @@ func NewFromConfig(cfg aws.Config, optFns ...func(*bedrockruntime.Options)) *Dis
 // NewWithClient creates a new instance of the Bedrock Tool Use Dispacher.
 func NewWithClient(client BedrockConverseAPIClient) *Dispacher {
 	d := &Dispacher{
-		client: client,
-		logger: slog.Default(),
+		client:  client,
+		logger:  slog.Default(),
+		toolSet: newToolSet(),
 	}
 	d.SetLogger(slog.Default())
 	return d
@@ -135,72 +129,6 @@ func (d *Dispacher) handleAfterToolUse(ctx context.Context, c *types.ContentBloc
 	}
 }
 
-type ConverseContext struct {
-	mu sync.RWMutex
-
-	inputMessages  []types.Message
-	system         []types.SystemContentBlock
-	outputMessages []types.Message
-	modelId        string
-}
-
-func (cc *ConverseContext) ModelId() string {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	return cc.modelId
-}
-
-// SetModelId sets the model ID for the conversation.
-// for in tool use. model id upgrade/downgrade.
-func (cc *ConverseContext) SetModelId(modelId string) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	cc.modelId = modelId
-}
-
-func (cc *ConverseContext) appendOutputMessages(msgs ...types.Message) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	cc.outputMessages = append(cc.outputMessages, msgs...)
-}
-
-func (cc *ConverseContext) InputMessages() []types.Message {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	cloned := make([]types.Message, len(cc.inputMessages))
-	copy(cloned, cc.inputMessages)
-	return cloned
-}
-
-func (cc *ConverseContext) OutputMessages() []types.Message {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	cloned := make([]types.Message, len(cc.outputMessages))
-	copy(cloned, cc.outputMessages)
-	return cloned
-}
-
-func (cc *ConverseContext) System() []types.SystemContentBlock {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	cloned := make([]types.SystemContentBlock, len(cc.system))
-	copy(cloned, cc.system)
-	return cloned
-}
-
-type key struct{}
-
-var contextKey = &key{}
-
-func NewContext(parent context.Context, cc *ConverseContext) context.Context {
-	return context.WithValue(parent, contextKey, cc)
-}
-
-func FromContext(ctx context.Context) (*ConverseContext, bool) {
-	cc, ok := ctx.Value(contextKey).(*ConverseContext)
-	return cc, ok
-}
-
 // Converse sends messages to the specified Amazon Bedrock model.
 // input same as https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/bedrockruntime#Client.Converse
 // but output is different.
@@ -218,7 +146,7 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 	}
 	cc := &ConverseContext{
 		inputMessages:  params.Messages,
-		modelId:        *params.ModelId,
+		modelID:        *params.ModelId,
 		outputMessages: make([]types.Message, 0, 1),
 	}
 	cctx := NewContext(ctx, cc)
@@ -231,7 +159,7 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 		}
 		params.Messages = inputMessages
 		params.ToolConfig = d.NewToolConfiguration(ctx)
-		params.ModelId = aws.String(cc.ModelId())
+		params.ModelId = aws.String(cc.ModelID())
 		d.handleBeforeModelCall(cctx, params)
 		resp, err := d.client.Converse(ctx, params, optFns...)
 		if err != nil {
@@ -349,7 +277,7 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 					wg.Done()
 				}()
 				d.handleBeforeToolUse(ctx, c)
-				toolResultBlock, err := worker.Execute(toolUseCtx, c.Value.Input)
+				toolResultBlock, err := worker.Execute(toolUseCtx, c.Value)
 				if err != nil {
 					toolResultBlock = types.ToolResultBlock{
 						Content: []types.ToolResultContentBlock{
@@ -381,13 +309,7 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 
 // Worker returns the worker registered with the specified name.
 func (d *Dispacher) Worker(name string) (Worker, bool) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	entry, ok := d.entries[name]
-	if !ok {
-		return nil, false
-	}
-	return entry.worker, true
+	return d.toolSet.Worker(name)
 }
 
 // flag of panic behavior, when the error occurred during the registration of the tool.
@@ -395,92 +317,34 @@ var NoPanicOnRegisterError = false
 
 // GetError returns the error that occurred during the registration of the tool.
 func (d *Dispacher) GetError() error {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return d.err
-}
-
-// RegisterOption is an option for registering a tool.
-type RegisterOption func(*workerEntry)
-
-// WithToolEnabler sets the function to determine whether the tool is enabled.
-// this function is called before the first time Bedorck Converse API
-// If return false, not enabled the tool in this conversation.
-func WithToolEnabler(f func(context.Context) bool) RegisterOption {
-	return func(e *workerEntry) {
-		e.enabler = f
-	}
+	return d.toolSet.GetError()
 }
 
 // Register registers a tool with the specified name and description.
 // if occurs error during the registration, it will panic.
 // if you want to handle the error, use GetError and NoPanicOnRegisterError=false.
 func (d *Dispacher) Register(name string, description string, worker Worker, opts ...RegisterOption) {
-	if err := d.register(name, description, worker); err != nil {
-		if !NoPanicOnRegisterError {
-			panic(fmt.Errorf("bedrock tool: %w", err))
-		}
-	}
-}
-
-func (d *Dispacher) register(name string, description string, worker Worker, opts ...RegisterOption) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if name == "" {
-		d.err = errors.New("tool name is required")
-		return d.err
-	}
-	if worker == nil {
-		d.err = errors.New("worker is required")
-		return d.err
-	}
-	if _, ok := d.entries[name]; ok {
-		d.err = fmt.Errorf("multiple registrations for tool %s", name)
-		return d.err
-	}
-	if d.entries == nil {
-		d.entries = make(map[string]workerEntry)
-	}
-	var desc *string
-	if description != "" {
-		desc = &description
-	}
-	entry := workerEntry{
-		tool: &types.ToolMemberToolSpec{
-			Value: types.ToolSpecification{
-				Name:        &name,
-				Description: desc,
-				InputSchema: &types.ToolInputSchemaMemberJson{
-					Value: worker.InputSchema(),
-				},
-			},
-		},
-		worker: worker,
-	}
-	for _, opt := range opts {
-		opt(&entry)
-	}
-	d.entries[name] = entry
-	return nil
+	d.toolSet.Register(name, description, worker, opts...)
 }
 
 // NewToolConfiguration returns a new ToolConfiguration.
 func (d *Dispacher) NewToolConfiguration(ctx context.Context) *types.ToolConfiguration {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-
 	cfg := &types.ToolConfiguration{
-		Tools:      make([]types.Tool, 0, len(d.entries)),
+		Tools:      d.toolSet.Tools(ctx),
 		ToolChoice: d.toolChoice,
-	}
-	for _, entry := range d.entries {
-		if entry.enabler != nil && !entry.enabler(ctx) {
-			continue
-		}
-		cfg.Tools = append(cfg.Tools, entry.tool)
 	}
 	if len(cfg.Tools) == 0 {
 		return nil
 	}
 	return cfg
+}
+
+func (d *Dispacher) Use(middlewares ...Middleware) {
+	d.toolSet.Use(middlewares...)
+}
+
+func (d *Dispacher) SubToolSet() *ToolSet {
+	return d.toolSet.SubToolSet()
 }

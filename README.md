@@ -152,3 +152,35 @@ d.OnAfterModelCall = func(ctx context.Context, input *bedrockruntime.ConverseInp
 }
 ```
 
+### Middleware
+
+if you want to add some common processing to all tools, you can use `bedrocktool.Middleware` 
+```go
+// implement bedrocktool.Middleware interface
+type middleware struct {}
+func (m middleware) HandleInputSchema(next bedrocktool.Worker) document.Interface {
+    // any thing...
+    return next()
+}
+func (m middleware) HandleExecute(ctx context.Context, in types.ToolUseBlock, next Worker) (types.ToolResultBlock, error) {
+    // any thing...
+    return next(ctx, in)
+}
+
+d := bedrocktool.NewFromConfig(awsCfg)
+d.Use(middleware{})
+```
+
+helper types `bedrocktool.InputSchemaMiddlewareFunc` and `bedrocktool.ExecuteMiddlewareFunc` for easy implementation.
+
+```go
+d := bedrocktool.NewFromConfig(awsCfg)
+d.Use(bedrocktool.InputSchemaMiddlewareFunc(func(next bedrocktool.Worker) document.Interface {
+    // any thing...
+    return next()
+}))
+d.Use(bedrocktool.ExecuteMiddlewareFunc(func(ctx context.Context, in types.ToolUseBlock, next Worker) (types.ToolResultBlock, error) {
+    // any thing...
+    return next(ctx, in)
+}))
+```
