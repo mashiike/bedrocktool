@@ -58,7 +58,7 @@ func (ts *ToolSet) Use(middlewares ...Middleware) {
 }
 
 func (ts *ToolSet) Register(name string, description string, worker Worker, opts ...RegisterOption) {
-	if err := ts.register(name, description, worker); err != nil {
+	if err := ts.register(name, description, worker, opts...); err != nil {
 		if !NoPanicOnRegisterError {
 			panic(fmt.Errorf("bedrock tool: %w", err))
 		}
