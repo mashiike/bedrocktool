@@ -9,6 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
+type Registory interface {
+	Register(name string, description string, worker Worker, opts ...RegisterOption)
+}
+
 type ToolSet struct {
 	mu          sync.RWMutex
 	subToolSets []*ToolSet
