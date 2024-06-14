@@ -20,7 +20,6 @@ type BedrockConverseAPIClient interface {
 
 // Dispacher is a tool use dispacher. It is used to send messages to the specified Amazon Bedrock model.
 type Dispacher struct {
-	err               error
 	mu                sync.RWMutex
 	toolSet           *ToolSet
 	client            BedrockConverseAPIClient
@@ -147,7 +146,7 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 	}
 	cc := &ConverseContext{
 		inputMessages:  params.Messages,
-		modelId:        *params.ModelId,
+		modelID:        *params.ModelId,
 		outputMessages: make([]types.Message, 0, 1),
 	}
 	cctx := NewContext(ctx, cc)
@@ -160,7 +159,7 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 		}
 		params.Messages = inputMessages
 		params.ToolConfig = d.NewToolConfiguration(ctx)
-		params.ModelId = aws.String(cc.ModelId())
+		params.ModelId = aws.String(cc.ModelID())
 		d.handleBeforeModelCall(cctx, params)
 		resp, err := d.client.Converse(ctx, params, optFns...)
 		if err != nil {

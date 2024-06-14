@@ -13,21 +13,21 @@ type ConverseContext struct {
 	inputMessages  []types.Message
 	system         []types.SystemContentBlock
 	outputMessages []types.Message
-	modelId        string
+	modelID        string
 }
 
-func (cc *ConverseContext) ModelId() string {
+func (cc *ConverseContext) ModelID() string {
 	cc.mu.RLock()
 	defer cc.mu.RUnlock()
-	return cc.modelId
+	return cc.modelID
 }
 
-// SetModelId sets the model ID for the conversation.
+// SetModelID sets the model ID for the conversation.
 // for in tool use. model id upgrade/downgrade.
-func (cc *ConverseContext) SetModelId(modelId string) {
+func (cc *ConverseContext) SetModelID(modelID string) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	cc.modelId = modelId
+	cc.modelID = modelID
 }
 
 func (cc *ConverseContext) appendOutputMessages(msgs ...types.Message) {
@@ -82,11 +82,17 @@ func withToolUseID(ctx context.Context, id string) context.Context {
 }
 
 func ToolName(ctx context.Context) string {
-	name, _ := ctx.Value(contextKey).(string)
+	name, ok := ctx.Value(contextKey).(string)
+	if !ok {
+		return ""
+	}
 	return name
 }
 
 func ToolUseID(ctx context.Context) string {
-	id, _ := ctx.Value(contextKey).(string)
+	id, ok := ctx.Value(contextKey).(string)
+	if !ok {
+		return ""
+	}
 	return id
 }
