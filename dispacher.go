@@ -341,3 +341,11 @@ func (d *Dispacher) NewToolConfiguration(ctx context.Context) *types.ToolConfigu
 	}
 	return cfg
 }
+
+func (d *Dispacher) Use(middlewares ...Middleware) {
+	d.toolSet.Use(middlewares...)
+}
+
+func (d *Dispacher) SubToolSet() *ToolSet {
+	return d.toolSet.SubToolSet()
+}

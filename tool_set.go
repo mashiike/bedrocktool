@@ -13,13 +13,23 @@ type ToolSet struct {
 	mu          sync.RWMutex
 	subToolSets []*ToolSet
 	entries     map[string]workerEntry
+	middlewares []Middleware
 	err         error
+}
+
+func (ts *ToolSet) SubToolSet() *ToolSet {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	sub := newToolSet()
+	ts.subToolSets = append(ts.subToolSets, sub)
+	return sub
 }
 
 func newToolSet() *ToolSet {
 	return &ToolSet{
 		entries:     make(map[string]workerEntry),
 		subToolSets: make([]*ToolSet, 0),
+		middlewares: make([]Middleware, 0),
 	}
 }
 
@@ -39,6 +49,12 @@ func WithToolEnabler(f func(context.Context) bool) RegisterOption {
 	return func(e *workerEntry) {
 		e.enabler = f
 	}
+}
+
+func (ts *ToolSet) Use(middlewares ...Middleware) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.middlewares = append(ts.middlewares, middlewares...)
 }
 
 func (ts *ToolSet) Register(name string, description string, worker Worker, opts ...RegisterOption) {
@@ -96,14 +112,47 @@ func (ts *ToolSet) register(name string, description string, worker Worker, opts
 	return nil
 }
 
-func (ts *ToolSet) Worker(name string) (Worker, bool) {
+func (ts *ToolSet) Exists(name string) bool {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
+	if _, ok := ts.entries[name]; ok {
+		return true
+	}
+	for _, sub := range ts.subToolSets {
+		if sub.Exists(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (ts *ToolSet) worker(name string) (Worker, bool) {
 	entry, ok := ts.entries[name]
+	if ok {
+
+		return entry.worker, true
+	}
+	for _, sub := range ts.subToolSets {
+		worker, ok := sub.Worker(name)
+		if ok {
+			return worker, true
+		}
+	}
+	return nil, false
+}
+
+func (ts *ToolSet) Worker(name string) (Worker, bool) {
+	w, ok := ts.worker(name)
 	if !ok {
 		return nil, false
 	}
-	return entry.worker, true
+	for _, middleware := range ts.middlewares {
+		w = &decoratedWorker{
+			Next: w,
+			With: middleware,
+		}
+	}
+	return w, true
 }
 
 func (ts *ToolSet) GetError() error {
