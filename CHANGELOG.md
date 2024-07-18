@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.1.1](https://github.com/mashiike/bedrocktool/compare/v0.1.0...v0.1.1) - 2024-07-18
+- Bump the aws-sdk-go-v2 group across 1 directory with 2 updates by @dependabot in https://github.com/mashiike/bedrocktool/pull/15
+
 ## [v0.1.0](https://github.com/mashiike/bedrocktool/commits/v0.1.0) - 2024-06-14
 - Bump github.com/stretchr/testify from 1.8.1 to 1.9.0 by @dependabot in https://github.com/mashiike/bedrocktool/pull/1
 - [Feature] Middleware by @mashiike in https://github.com/mashiike/bedrocktool/pull/5
