@@ -272,3 +272,54 @@ func testDispacherConverseWithMock(tb testing.TB) {
 	}, nil)
 	testDispacherConverse(tb, client)
 }
+
+func TestTemporaryToolSet(t *testing.T) {
+	ctx := context.Background()
+	client := newMockClient(t)
+	defer client.AssertExpectations(t)
+	d := NewWithClient(client)
+	clockWorkerExpected := NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
+		return types.ToolResultBlock{
+			Content: []types.ToolResultContentBlock{
+				&types.ToolResultContentBlockMemberText{
+					Value: flextime.Now().Format(time.RFC3339),
+				},
+			},
+		}, nil
+	})
+	d.Register(
+		"clock",
+		"Return current time in RFC3339 format",
+		clockWorkerExpected,
+	)
+	ctxWithTs, ts := WithToolSet(ctx)
+	clockInJSTWorkerExpected := NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
+		return types.ToolResultBlock{
+			Content: []types.ToolResultContentBlock{
+				&types.ToolResultContentBlockMemberText{
+					Value: flextime.Now().In(time.FixedZone("JST", 9*60*60)).Format(time.RFC3339),
+				},
+			},
+		}, nil
+	})
+	ts.Register(
+		"clock_in_jst",
+		"Return current time in RFC3339 format in JST",
+		clockInJSTWorkerExpected,
+	)
+	toolConfig := d.NewToolConfiguration(ctxWithTs)
+	require.Len(t, toolConfig.Tools, 2)
+	toolNames := make([]string, 0, len(toolConfig.Tools))
+	for _, tool := range toolConfig.Tools {
+		if t, ok := tool.(*types.ToolMemberToolSpec); ok {
+			toolNames = append(toolNames, *t.Value.Name)
+		}
+	}
+	require.ElementsMatch(t, []string{"clock", "clock_in_jst"}, toolNames)
+	clockWorkerActual, ok := d.ResolveWorker(ctxWithTs, "clock")
+	require.True(t, ok)
+	require.Same(t, clockWorkerExpected, clockWorkerActual)
+	clockInJSTWorkerActual, ok := d.ResolveWorker(ctxWithTs, "clock_in_jst")
+	require.True(t, ok)
+	require.Same(t, clockInJSTWorkerExpected, clockInJSTWorkerActual)
+}

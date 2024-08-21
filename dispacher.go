@@ -228,7 +228,7 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 				messageMu.Unlock()
 				continue
 			}
-			worker, ok := d.Worker(*c.Value.Name)
+			worker, ok := d.ResolveWorker(ctx, *c.Value.Name)
 			if !ok {
 				d.logger.WarnContext(ctx, "tool not found", "name", *c.Value.Name)
 				messageMu.Lock()
@@ -331,14 +331,31 @@ func (d *Dispacher) Register(name string, description string, worker Worker, opt
 func (d *Dispacher) NewToolConfiguration(ctx context.Context) *types.ToolConfiguration {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
+	tools := d.toolSet.Tools(ctx)
+	if temp, ok := ctx.Value(temporaryToolSetContextKey).(*ToolSet); ok {
+		tools = append(tools, temp.Tools(ctx)...)
+	}
 	cfg := &types.ToolConfiguration{
-		Tools:      d.toolSet.Tools(ctx),
+		Tools:      tools,
 		ToolChoice: d.toolChoice,
 	}
 	if len(cfg.Tools) == 0 {
 		return nil
 	}
 	return cfg
+}
+
+// ResolveWorker returns the worker registered with the specified name.
+// diff of Worker: consider to temporary tool set.
+func (d *Dispacher) ResolveWorker(ctx context.Context, name string) (Worker, bool) {
+	if worker, ok := d.toolSet.Worker(name); ok {
+		return worker, true
+	}
+	temp, ok := temporaryToolSetFromContext(ctx)
+	if !ok {
+		return nil, false
+	}
+	return temp.Worker(name)
 }
 
 func (d *Dispacher) Use(middlewares ...Middleware) {
