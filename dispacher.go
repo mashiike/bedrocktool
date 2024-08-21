@@ -320,6 +320,12 @@ func (d *Dispacher) GetError() error {
 	return d.toolSet.GetError()
 }
 
+// RegisterTool registers a tool.
+// this is syntactic sugar for Register.
+func (d *Dispacher) RegisterTool(tool Tool, opts ...RegisterOption) {
+	d.toolSet.RegisterTool(tool, opts...)
+}
+
 // Register registers a tool with the specified name and description.
 // if occurs error during the registration, it will panic.
 // if you want to handle the error, use GetError and NoPanicOnRegisterError=false.
