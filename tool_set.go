@@ -76,6 +76,16 @@ func (ts *ToolSet) clone() *ToolSet {
 	return clone
 }
 
+type Tool interface {
+	Name() string
+	Description() string
+	Worker() Worker
+}
+
+func (ts *ToolSet) RegisterTool(tool Tool, opts ...RegisterOption) {
+	ts.Register(tool.Name(), tool.Description(), tool.Worker(), opts...)
+}
+
 func (ts *ToolSet) Register(name string, description string, worker Worker, opts ...RegisterOption) {
 	if err := ts.register(name, description, worker, opts...); err != nil {
 		if !NoPanicOnRegisterError {
