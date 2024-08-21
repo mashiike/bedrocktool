@@ -184,3 +184,18 @@ d.Use(bedrocktool.ExecuteMiddlewareFunc(func(ctx context.Context, in types.ToolU
     return next(ctx, in)
 }))
 ```
+
+### Context-Bound ToolSet
+
+Tools are grouped together in units called ToolSet. If you want to use a specific ToolSet only within a certain context, you can do so as follows:
+
+```go
+ctx, ts := bedrocktool.WithToolSet(ctx)
+ts.Register(toolName, toolDescription, bedrocktool.NewWorker(toolWorkerFunc))
+
+d.Converse(ctx, &bedrockruntime.ConverseInput{
+    //... 
+})
+```
+
+This approach allows you to activate specific tools only within the scope of a given context.
