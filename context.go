@@ -62,27 +62,32 @@ func (cc *ConverseContext) System() []types.SystemContentBlock {
 
 type key struct{}
 
-var contextKey = &key{}
+var (
+	converseContextKey         = &key{}
+	toolNameContextKey         = &key{}
+	toolUseIDContextKey        = &key{}
+	temporaryToolSetContextKey = &key{}
+)
 
 func NewContext(parent context.Context, cc *ConverseContext) context.Context {
-	return context.WithValue(parent, contextKey, cc)
+	return context.WithValue(parent, converseContextKey, cc)
 }
 
 func FromContext(ctx context.Context) (*ConverseContext, bool) {
-	cc, ok := ctx.Value(contextKey).(*ConverseContext)
+	cc, ok := ctx.Value(converseContextKey).(*ConverseContext)
 	return cc, ok
 }
 
 func withToolName(ctx context.Context, name string) context.Context {
-	return context.WithValue(ctx, contextKey, name)
+	return context.WithValue(ctx, toolNameContextKey, name)
 }
 
 func withToolUseID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, contextKey, id)
+	return context.WithValue(ctx, toolUseIDContextKey, id)
 }
 
 func ToolName(ctx context.Context) string {
-	name, ok := ctx.Value(contextKey).(string)
+	name, ok := ctx.Value(toolNameContextKey).(string)
 	if !ok {
 		return ""
 	}
@@ -90,9 +95,28 @@ func ToolName(ctx context.Context) string {
 }
 
 func ToolUseID(ctx context.Context) string {
-	id, ok := ctx.Value(contextKey).(string)
+	id, ok := ctx.Value(toolUseIDContextKey).(string)
 	if !ok {
 		return ""
 	}
 	return id
+}
+
+func withTemporaryToolSet(ctx context.Context, ts *ToolSet) context.Context {
+	return context.WithValue(ctx, temporaryToolSetContextKey, ts)
+}
+
+func temporaryToolSetFromContext(ctx context.Context) (*ToolSet, bool) {
+	ts, ok := ctx.Value(temporaryToolSetContextKey).(*ToolSet)
+	return ts, ok
+}
+
+func WithToolSet(ctx context.Context) (context.Context, *ToolSet) {
+	ts, ok := temporaryToolSetFromContext(ctx)
+	if !ok {
+		ts = newToolSet()
+	} else {
+		ts = ts.clone()
+	}
+	return withTemporaryToolSet(ctx, ts), ts
 }

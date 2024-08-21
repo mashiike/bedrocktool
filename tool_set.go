@@ -62,6 +62,20 @@ func (ts *ToolSet) Use(middlewares ...Middleware) {
 	ts.middlewares = append(ts.middlewares, middlewares...)
 }
 
+func (ts *ToolSet) clone() *ToolSet {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	clone := newToolSet()
+	for name, entry := range ts.entries {
+		clone.entries[name] = entry
+	}
+	for _, sub := range ts.subToolSets {
+		clone.subToolSets = append(clone.subToolSets, sub.clone())
+	}
+	clone.middlewares = append(clone.middlewares, ts.middlewares...)
+	return clone
+}
+
 func (ts *ToolSet) Register(name string, description string, worker Worker, opts ...RegisterOption) {
 	if err := ts.register(name, description, worker, opts...); err != nil {
 		if !NoPanicOnRegisterError {
