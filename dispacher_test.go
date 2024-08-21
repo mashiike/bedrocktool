@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient) {
+func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient, temp bool) {
 	cleanup := flextime.Set(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer cleanup()
 	d := NewWithClient(client)
@@ -32,21 +32,41 @@ func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient) {
 			totalOutputTokens.Add(int64(*output.Usage.OutputTokens))
 		}
 	})
-	d.Register(
-		"clock",
-		"Return current time in RFC3339 format",
-		NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
-			isUse.Store(true)
-			return types.ToolResultBlock{
-				Content: []types.ToolResultContentBlock{
-					&types.ToolResultContentBlockMemberText{
-						Value: flextime.Now().Format(time.RFC3339),
+	ctx := context.Background()
+	if temp {
+		var ts *ToolSet
+		ctx, ts = WithToolSet(ctx)
+		ts.Register(
+			"clock",
+			"Return current time in RFC3339 format",
+			NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
+				isUse.Store(true)
+				return types.ToolResultBlock{
+					Content: []types.ToolResultContentBlock{
+						&types.ToolResultContentBlockMemberText{
+							Value: flextime.Now().Format(time.RFC3339),
+						},
 					},
-				},
-			}, nil
-		}),
-	)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				}, nil
+			}),
+		)
+	} else {
+		d.Register(
+			"clock",
+			"Return current time in RFC3339 format",
+			NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
+				isUse.Store(true)
+				return types.ToolResultBlock{
+					Content: []types.ToolResultContentBlock{
+						&types.ToolResultContentBlockMemberText{
+							Value: flextime.Now().Format(time.RFC3339),
+						},
+					},
+				}, nil
+			}),
+		)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	output, err := d.Converse(ctx, &bedrockruntime.ConverseInput{
 		ModelId: aws.String("anthropic.claude-3-haiku-20240307-v1:0"),
@@ -94,7 +114,7 @@ func TestDispacherConverseWithAWS(t *testing.T) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	require.NoError(t, err)
 	client := bedrockruntime.NewFromConfig(cfg)
-	testDispacherConverse(t, client)
+	testDispacherConverse(t, client, false)
 }
 
 type mockClient struct {
@@ -122,7 +142,11 @@ func newMockClient(tb testing.TB) *mockClient {
 }
 
 func TestDispacherConverseWithMock(t *testing.T) {
-	testDispacherConverseWithMock(t)
+	testDispacherConverseWithMock(t, false)
+}
+
+func TestDispacherConverseWithMock__WithTemp(t *testing.T) {
+	testDispacherConverseWithMock(t, true)
 }
 
 func BenchmarkDispacherConverseWithMock(b *testing.B) {
@@ -130,11 +154,11 @@ func BenchmarkDispacherConverseWithMock(b *testing.B) {
 	b.ReportMetric(0, "ns/op")
 
 	for i := 0; i < b.N; i++ {
-		testDispacherConverseWithMock(b)
+		testDispacherConverseWithMock(b, false)
 	}
 }
 
-func testDispacherConverseWithMock(tb testing.TB) {
+func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 	client := newMockClient(tb)
 	defer client.AssertExpectations(tb)
 	//1st-time
@@ -270,7 +294,7 @@ func testDispacherConverseWithMock(tb testing.TB) {
 			OutputTokens: aws.Int32(1),
 		},
 	}, nil)
-	testDispacherConverse(tb, client)
+	testDispacherConverse(tb, client, temp)
 }
 
 func TestTemporaryToolSet(t *testing.T) {
