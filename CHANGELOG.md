@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.2.1](https://github.com/mashiike/bedrocktool/compare/v0.2.0...v0.2.1) - 2024-08-21
+- add test for go1.23 by @mashiike in https://github.com/mashiike/bedrocktool/pull/25
+
 ## [v0.2.0](https://github.com/mashiike/bedrocktool/compare/v0.1.1...v0.2.0) - 2024-08-21
 - Bump the aws-sdk-go-v2 group across 1 directory with 2 updates by @dependabot in https://github.com/mashiike/bedrocktool/pull/20
 - add util func for validate tool name by @mashiike in https://github.com/mashiike/bedrocktool/pull/22
