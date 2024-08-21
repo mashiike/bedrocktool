@@ -60,13 +60,13 @@ func (cc *ConverseContext) System() []types.SystemContentBlock {
 	return cloned
 }
 
-type key struct{}
+type key string
 
 var (
-	converseContextKey         = &key{}
-	toolNameContextKey         = &key{}
-	toolUseIDContextKey        = &key{}
-	temporaryToolSetContextKey = &key{}
+	converseContextKey         = key("converseContext")
+	toolNameContextKey         = key("toolName")
+	toolUseIDContextKey        = key("toolUseID")
+	temporaryToolSetContextKey = key("temporaryToolSet")
 )
 
 func NewContext(parent context.Context, cc *ConverseContext) context.Context {
