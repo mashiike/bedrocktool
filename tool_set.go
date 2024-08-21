@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -69,11 +70,25 @@ func (ts *ToolSet) Register(name string, description string, worker Worker, opts
 	}
 }
 
+const toolNameRegexpPattern = `^[a-zA-Z][a-zA-Z0-9_]*$`
+
+var toolNameRegexp = regexp.MustCompile(toolNameRegexpPattern)
+
+func ValidateToolName(name string) error {
+	if name == "" {
+		return errors.New("tool name is required")
+	}
+	if !toolNameRegexp.MatchString(name) {
+		return fmt.Errorf("tool name %q does not match pattern %q", name, toolNameRegexpPattern)
+	}
+	return nil
+}
+
 func (ts *ToolSet) register(name string, description string, worker Worker, opts ...RegisterOption) error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	if name == "" {
-		ts.err = errors.New("tool name is required")
+	if err := ValidateToolName(name); err != nil {
+		ts.err = err
 		return ts.err
 	}
 	if worker == nil {
