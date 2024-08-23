@@ -51,7 +51,7 @@ func GenerateInputSchemaDocument[T any]() (document.Interface, error) {
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(bs, &m); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal schema: %w (schema=%q)", err, string(bs))
 	}
 	delete(m, "$schema")
 	return document.NewLazyDocument(m), nil
