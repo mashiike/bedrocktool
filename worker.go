@@ -30,8 +30,7 @@ func (w *reflectWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock)
 
 type EmptyWorkerInput struct{}
 
-func GenerateInputSchemaDocument[T any]() (document.Interface, error) {
-	var v T
+func MarshalJSONSchema(v any) ([]byte, error) {
 	r := jsonschema.Reflector{
 		DoNotReference: true,
 		ExpandedStruct: true,
@@ -40,6 +39,15 @@ func GenerateInputSchemaDocument[T any]() (document.Interface, error) {
 	bs, err := json.Marshal(schema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal schema: %w", err)
+	}
+	return bs, nil
+}
+
+func GenerateInputSchemaDocument[T any]() (document.Interface, error) {
+	var v T
+	bs, err := MarshalJSONSchema(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate schema: %w", err)
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(bs, &m); err != nil {
