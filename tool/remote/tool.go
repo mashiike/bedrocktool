@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Songmu/flextime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	"github.com/mashiike/bedrocktool"
@@ -20,12 +21,14 @@ import (
 type SpecificationCache struct {
 	mu             sync.RWMutex
 	cache          map[string]Specification
+	cacheAt        map[string]time.Time
 	expireDuration time.Duration
 }
 
 func NewSpecificationCache(expireDuration time.Duration) *SpecificationCache {
 	return &SpecificationCache{
 		cache:          make(map[string]Specification),
+		cacheAt:        make(map[string]time.Time),
 		expireDuration: expireDuration,
 	}
 }
@@ -34,6 +37,19 @@ func (sc *SpecificationCache) Get(name string) (Specification, bool) {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
 	spec, ok := sc.cache[name]
+	if !ok {
+		return Specification{}, false
+	}
+	at, ok := sc.cacheAt[name]
+	if !ok {
+		return Specification{}, false
+	}
+	if flextime.Since(at) > sc.expireDuration {
+		sc.mu.RUnlock()
+		sc.Delete(name)
+		sc.mu.RLock()
+		return Specification{}, false
+	}
 	return spec, ok
 }
 
@@ -41,6 +57,14 @@ func (sc *SpecificationCache) Set(name string, spec Specification) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	sc.cache[name] = spec
+	sc.cacheAt[name] = flextime.Now()
+}
+
+func (sc *SpecificationCache) Delete(name string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	delete(sc.cache, name)
+	delete(sc.cacheAt, name)
 }
 
 var DefaultSpecificationCache = NewSpecificationCache(15 * time.Minute)

@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
+	"github.com/Songmu/flextime"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -61,4 +63,36 @@ func TestRemoteTool(t *testing.T) {
 	require.Equal(t, types.ToolResultStatusSuccess, result.Status)
 	require.Len(t, result.Content, 1)
 	require.Equal(t, "sunny", result.Content[0].(*types.ToolResultContentBlockMemberText).Value)
+}
+
+func TestSpecificationCache(t *testing.T) {
+	now := time.Now()
+	restore := flextime.Fix(now.AddDate(0, 0, -1))
+	defer restore()
+	cache := NewSpecificationCache(1 * time.Hour)
+
+	spec := Specification{Name: "test"}
+
+	// Set the specification in the cache
+	cache.Set("https://example.com/", spec)
+
+	// Get the specification from the cache
+	retrievedSpec, ok := cache.Get("https://example.com/")
+	require.True(t, ok)
+	require.Equal(t, spec, retrievedSpec)
+
+	flextime.Fix(now)
+
+	// Try to get the specification from the cache after expiration
+	_, ok = cache.Get("https://example.com/")
+	require.False(t, ok)
+	// Set the specification in the cache again
+	cache.Set("http://www.example.com/", spec)
+
+	// Delete the specification from the cache
+	cache.Delete("http://www.example.com/")
+
+	// Try to get the specification from the cache after deletion
+	_, ok = cache.Get("http://www.example.com/")
+	require.False(t, ok)
 }
