@@ -18,7 +18,7 @@ import (
 )
 
 type Handler struct {
-	cfg                   HandlerConfig
+	cfg                   *HandlerConfig
 	workerEndpoint        *url.URL
 	specificationEndpoint *url.URL
 	inputSchema           json.RawMessage
@@ -42,7 +42,7 @@ var _ http.Handler = (*Handler)(nil)
 
 func NewHandler(cfg HandlerConfig) (*Handler, error) {
 	h := &Handler{
-		cfg: cfg,
+		cfg: &cfg,
 		mux: http.NewServeMux(),
 	}
 	if bedrocktool.ValidateToolName(cfg.ToolName) != nil {

@@ -77,3 +77,19 @@ func TestHandler(t *testing.T) {
 	expected = `{"content":[{"type":"text","text":"sunny"}],"status":"success"}`
 	require.JSONEq(t, expected, workerResp.Body.String())
 }
+
+func TestHandler__NotFound(t *testing.T) {
+	h, err := NewHandler(HandlerConfig{
+		ToolName:   "weather",
+		WorkerPath: "/worker/execute",
+		Worker: bedrocktool.NewWorker(func(ctx context.Context, input weatherInput) (types.ToolResultBlock, error) {
+			return types.ToolResultBlock{}, nil
+		}),
+	})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/notfound", nil)
+	resp := httptest.NewRecorder()
+	h.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusNotFound, resp.Code)
+	require.JSONEq(t, `{"error":"Not Found", "message":"the requested resource \"/notfound\" was not found", "status":404}`, resp.Body.String())
+}
