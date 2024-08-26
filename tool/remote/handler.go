@@ -140,6 +140,7 @@ var (
 	HeaderToolName  = "Bedrock-Tool-Name"
 )
 
+// WorkerHandler returns an http.Handler that serves the worker endpoint.
 func (h *Handler) WorkerHandler() http.Handler {
 	return http.HandlerFunc(h.serveHTTPWorker)
 }
@@ -185,6 +186,11 @@ func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(buf.Bytes())
+}
+
+// SpecificationHandler returns an http.Handler that serves the tool specification.
+func (h *Handler) SpecificationHandler() http.Handler {
+	return http.HandlerFunc(h.serveHTTPSpecification)
 }
 
 func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Request) {
