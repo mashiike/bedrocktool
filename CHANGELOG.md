@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.4.0](https://github.com/mashiike/bedrocktool/compare/v0.3.1...v0.4.0) - 2024-08-26
+- [BrakingChanges]  bedrocktool/tool/remote package I/F by @mashiike in https://github.com/mashiike/bedrocktool/pull/33
+
 ## [v0.3.1](https://github.com/mashiike/bedrocktool/compare/v0.3.0...v0.3.1) - 2024-08-23
 - fix cache by @mashiike in https://github.com/mashiike/bedrocktool/pull/30
 - for debug, marshalJSONSchema util by @mashiike in https://github.com/mashiike/bedrocktool/pull/32
