@@ -69,13 +69,15 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.WriteHeader(code)
-
-			response := map[string]any{
+			var body bytes.Buffer
+			if err := json.NewEncoder(&body).Encode(map[string]any{
 				"error":   http.StatusText(code),
 				"message": err.Error(),
 				"status":  code,
+			}); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
-			json.NewEncoder(w).Encode(response)
 		}
 	}
 
