@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.4.1](https://github.com/mashiike/bedrocktool/compare/v0.4.0...v0.4.1) - 2024-08-26
+- fix panic by @mashiike in https://github.com/mashiike/bedrocktool/pull/35
+
 ## [v0.4.0](https://github.com/mashiike/bedrocktool/compare/v0.3.1...v0.4.0) - 2024-08-26
 - [BrakingChanges]  bedrocktool/tool/remote package I/F by @mashiike in https://github.com/mashiike/bedrocktool/pull/33
 
