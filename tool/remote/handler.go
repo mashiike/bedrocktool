@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,12 +26,16 @@ type Handler struct {
 }
 
 type HandlerConfig struct {
-	Endpoint        *url.URL
-	WorkerPath      string
-	ToolName        string
-	ToolDescription string
-	Worker          bedrocktool.Worker
-	Logger          *slog.Logger
+	Endpoint                *url.URL
+	WorkerPath              string
+	ToolName                string
+	ToolDescription         string
+	SpecificationPath       string
+	ErrorHandler            func(w http.ResponseWriter, r *http.Request, err error, code int)
+	MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request)
+	NotFoundHandler         func(w http.ResponseWriter, r *http.Request)
+	Worker                  bedrocktool.Worker
+	Logger                  *slog.Logger
 }
 
 var _ http.Handler = (*Handler)(nil)
@@ -43,13 +48,49 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 	if bedrocktool.ValidateToolName(cfg.ToolName) != nil {
 		return nil, errors.New("invalid tool name")
 	}
-	if cfg.Endpoint == nil {
-		return nil, errors.New("endpoint is required")
-	}
-	h.workerEndpoint = cfg.Endpoint.JoinPath(cfg.WorkerPath)
-	h.specificationEndpoint = cfg.Endpoint.JoinPath(SpecificationPath)
 	if cfg.Worker == nil {
 		return nil, errors.New("worker is required")
+	}
+	if cfg.Endpoint == nil {
+		cfg.Endpoint = &url.URL{
+			Scheme: "https",
+		}
+	}
+	h.workerEndpoint = cfg.Endpoint.JoinPath(cfg.WorkerPath)
+	if cfg.SpecificationPath == "" {
+		cfg.SpecificationPath = DefaultSpecificationPath
+	}
+	h.specificationEndpoint = cfg.Endpoint.JoinPath(cfg.SpecificationPath)
+	if cfg.Worker == nil {
+		return nil, errors.New("worker is required")
+	}
+	if cfg.ErrorHandler == nil {
+		cfg.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error, code int) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			var body bytes.Buffer
+			if err := json.NewEncoder(&body).Encode(map[string]any{
+				"error":   http.StatusText(code),
+				"message": err.Error(),
+				"status":  code,
+			}); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(code)
+			w.Write(body.Bytes())
+		}
+	}
+
+	if cfg.NotFoundHandler == nil {
+		cfg.NotFoundHandler = func(w http.ResponseWriter, r *http.Request) {
+			cfg.ErrorHandler(w, r, fmt.Errorf("the requested resource %q was not found", r.URL.Path), http.StatusNotFound)
+		}
+	}
+	if cfg.MethodNotAllowedHandler == nil {
+		cfg.MethodNotAllowedHandler = func(w http.ResponseWriter, r *http.Request) {
+			cfg.ErrorHandler(w, r, fmt.Errorf("the requested resource %q does not support the method %q", r.URL.Path, r.Method), http.StatusMethodNotAllowed)
+		}
 	}
 	var err error
 	h.inputSchema, err = cfg.Worker.InputSchema().MarshalSmithyDocument()
@@ -59,14 +100,42 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 	if h.cfg.Logger == nil {
 		h.cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	}
-	h.mux.HandleFunc("/"+strings.TrimPrefix(h.workerEndpoint.Path, "/"), h.serveHTTPWorker)
-	h.mux.HandleFunc("/"+strings.TrimPrefix(h.specificationEndpoint.Path, "/"), h.serveHTTPSpecification)
+	h.mux.HandleFunc("/"+strings.TrimPrefix(h.workerEndpoint.Path, "/"),
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				h.cfg.MethodNotAllowedHandler(w, r)
+				return
+			}
+			h.serveHTTPWorker(w, r)
+		},
+	)
+	h.mux.HandleFunc("/"+strings.TrimPrefix(h.specificationEndpoint.Path, "/"),
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				h.cfg.MethodNotAllowedHandler(w, r)
+				return
+			}
+			h.serveHTTPSpecification(w, r)
+		},
+	)
 	return h, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.cfg.Logger.InfoContext(r.Context(), "request", "method", r.Method, "url", r.URL)
-	h.mux.ServeHTTP(w, r)
+	if r.RequestURI == "*" {
+		if r.ProtoAtLeast(1, 1) {
+			w.Header().Set("Connection", "close")
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	matched, pattern := h.mux.Handler(r)
+	if pattern == "" {
+		h.cfg.NotFoundHandler(w, r)
+		return
+	}
+	matched.ServeHTTP(w, r)
 }
 
 var (
@@ -74,12 +143,17 @@ var (
 	HeaderToolName  = "Bedrock-Tool-Name"
 )
 
+// WorkerHandler returns an http.Handler that serves the worker endpoint.
+func (h *Handler) WorkerHandler() http.Handler {
+	return http.HandlerFunc(h.serveHTTPWorker)
+}
+
 func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var v interface{}
 	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
 		h.cfg.Logger.WarnContext(ctx, "failed to decode request body", "error", err)
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		h.cfg.ErrorHandler(w, r, fmt.Errorf("failed to decode request body: %w", err), http.StatusBadRequest)
 		return
 	}
 	toolUse := types.ToolUseBlock{
@@ -87,7 +161,7 @@ func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 		Name:      aws.String(h.cfg.ToolName),
 		ToolUseId: aws.String(r.Header.Get(HeaderToolUseID)),
 	}
-	result, err := h.cfg.Worker.Execute(r.Context(), toolUse)
+	result, err := h.cfg.Worker.Execute(ctx, toolUse)
 	var tr ToolResult
 	if err != nil {
 		tr = ToolResult{
@@ -102,14 +176,14 @@ func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if err := tr.UnmarshalTypes(result); err != nil {
 			h.cfg.Logger.WarnContext(ctx, "failed to marshal tool result", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			h.cfg.ErrorHandler(w, r, fmt.Errorf("failed to marshal tool result: %w", err), http.StatusInternalServerError)
 			return
 		}
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(tr); err != nil {
 		h.cfg.Logger.WarnContext(ctx, "failed to encode response", "error", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		h.cfg.ErrorHandler(w, r, fmt.Errorf("failed to encode response: %w", err), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -117,16 +191,28 @@ func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
-func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, _ *http.Request) {
+// SpecificationHandler returns an http.Handler that serves the tool specification.
+func (h *Handler) SpecificationHandler() http.Handler {
+	return http.HandlerFunc(h.serveHTTPSpecification)
+}
+
+func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	workerEndpoint := *h.workerEndpoint
+	if workerEndpoint.Host == "" {
+		workerEndpoint.Host = req.Host
+		workerEndpoint.Scheme = req.URL.Scheme
+	}
 	spec := Specification{
 		Name:           h.cfg.ToolName,
 		Description:    h.cfg.ToolDescription,
 		InputSchema:    h.inputSchema,
-		WorkerEndpoint: h.workerEndpoint.String(),
+		WorkerEndpoint: workerEndpoint.String(),
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(spec); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		h.cfg.Logger.WarnContext(ctx, "failed to encode specification", "error", err)
+		h.cfg.ErrorHandler(w, req, fmt.Errorf("failed to encode specification: %w", err), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

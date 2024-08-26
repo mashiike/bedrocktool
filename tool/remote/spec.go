@@ -15,4 +15,4 @@ type Specification struct {
 	VerifyEndpoint string `json:"verify_endpoint,omitempty"`
 }
 
-var SpecificationPath = "/.well-known/bedrock-tool-specification"
+var DefaultSpecificationPath = "/.well-known/bedrock-tool-specification"

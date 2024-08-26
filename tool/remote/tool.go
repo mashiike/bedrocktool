@@ -76,7 +76,7 @@ type Tool struct {
 	inputSchema document.Interface
 	client      *http.Client
 	newErr      func(error) (types.ToolResultBlock, error)
-	signer      func(*http.Request) (*http.Request, error)
+	signer      func(*http.Request, string) (*http.Request, error)
 }
 
 type RequestConstructor func(ctx context.Context, method string, url string, toolUse types.ToolUseBlock) (*http.Request, error)
@@ -107,7 +107,7 @@ type ToolConfig struct {
 	RequestConstructor RequestConstructor
 	HTTPClient         *http.Client
 	ErrorConstractor   func(error) (types.ToolResultBlock, error)
-	RequestSigner      func(*http.Request) (*http.Request, error)
+	RequestSigner      func(req *http.Request, subject string) (*http.Request, error)
 }
 
 type remoteWorker struct {
@@ -125,7 +125,7 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 		cfg.RequestConstructor = DefaultRequestConstructor
 	}
 	if cfg.SpecificationPath == "" {
-		cfg.SpecificationPath = SpecificationPath
+		cfg.SpecificationPath = DefaultSpecificationPath
 	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
@@ -136,7 +136,7 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 		}
 	}
 	if cfg.RequestSigner == nil {
-		cfg.RequestSigner = func(req *http.Request) (*http.Request, error) {
+		cfg.RequestSigner = func(req *http.Request, _ string) (*http.Request, error) {
 			return req, nil
 		}
 	}
@@ -177,7 +177,7 @@ func (t *Tool) fetchSpecification(ctx context.Context) (Specification, error) {
 	if err != nil {
 		return Specification{}, err
 	}
-	req, err = t.signer(req)
+	req, err = t.signer(req, "specification")
 	if err != nil {
 		return Specification{}, err
 	}
@@ -226,7 +226,11 @@ func (w *remoteWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock) 
 	if err != nil {
 		return w.tool.newErr(fmt.Errorf("failed to create request; %w", err))
 	}
-	req, err = w.tool.signer(req)
+	subject := "tool/" + w.tool.Name()
+	if toolUse.ToolUseId != nil {
+		subject += "/" + *toolUse.ToolUseId
+	}
+	req, err = w.tool.signer(req, subject)
 	if err != nil {
 		return w.tool.newErr(fmt.Errorf("failed to sign request; %w", err))
 	}
@@ -257,7 +261,7 @@ func (t *Tool) Verify(ctx context.Context, body io.Reader) error {
 	if err != nil {
 		return err
 	}
-	req, err = t.signer(req)
+	req, err = t.signer(req, "verify/"+t.Name())
 	if err != nil {
 		return err
 	}

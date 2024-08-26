@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -19,11 +18,7 @@ type weatherInput struct {
 }
 
 func TestHandler(t *testing.T) {
-	u, err := url.Parse("http://localhost:8080/")
-	require.NoError(t, err)
-
 	h, err := NewHandler(HandlerConfig{
-		Endpoint:        u,
 		WorkerPath:      "/worker/execute",
 		ToolName:        "weather",
 		ToolDescription: "return weather",
