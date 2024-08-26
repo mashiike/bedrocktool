@@ -97,8 +97,24 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 	if h.cfg.Logger == nil {
 		h.cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 	}
-	h.mux.HandleFunc("/"+strings.TrimPrefix(h.workerEndpoint.Path, "/"), h.serveHTTPWorker)
-	h.mux.HandleFunc("/"+strings.TrimPrefix(h.specificationEndpoint.Path, "/"), h.serveHTTPSpecification)
+	h.mux.HandleFunc("/"+strings.TrimPrefix(h.workerEndpoint.Path, "/"),
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				h.cfg.MethodNotAllowedHandler(w, r)
+				return
+			}
+			h.serveHTTPWorker(w, r)
+		},
+	)
+	h.mux.HandleFunc("/"+strings.TrimPrefix(h.specificationEndpoint.Path, "/"),
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				h.cfg.MethodNotAllowedHandler(w, r)
+				return
+			}
+			h.serveHTTPSpecification(w, r)
+		},
+	)
 	return h, nil
 }
 
@@ -124,12 +140,12 @@ var (
 	HeaderToolName  = "Bedrock-Tool-Name"
 )
 
+func (h *Handler) WorkerHandler() http.Handler {
+	return http.HandlerFunc(h.serveHTTPWorker)
+}
+
 func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if r.Method != http.MethodPost {
-		h.cfg.MethodNotAllowedHandler(w, r)
-		return
-	}
 	var v interface{}
 	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
 		h.cfg.Logger.WarnContext(ctx, "failed to decode request body", "error", err)
@@ -173,10 +189,6 @@ func (h *Handler) serveHTTPWorker(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	if req.Method != http.MethodGet {
-		h.cfg.MethodNotAllowedHandler(w, req)
-		return
-	}
 	workerEndpoint := *h.workerEndpoint
 	if workerEndpoint.Host == "" {
 		workerEndpoint.Host = req.Host
