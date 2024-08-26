@@ -180,6 +180,7 @@ func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Reques
 	workerEndpoint := *h.workerEndpoint
 	if workerEndpoint.Host == "" {
 		workerEndpoint.Host = req.Host
+		workerEndpoint.Scheme = req.URL.Scheme
 	}
 	spec := Specification{
 		Name:           h.cfg.ToolName,
