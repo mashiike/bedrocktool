@@ -68,7 +68,6 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 		cfg.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error, code int) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.WriteHeader(code)
 			var body bytes.Buffer
 			if err := json.NewEncoder(&body).Encode(map[string]any{
 				"error":   http.StatusText(code),
@@ -78,6 +77,8 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			w.WriteHeader(code)
+			w.Write(body.Bytes())
 		}
 	}
 
