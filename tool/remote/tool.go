@@ -125,7 +125,7 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 		cfg.RequestConstructor = DefaultRequestConstructor
 	}
 	if cfg.SpecificationPath == "" {
-		cfg.SpecificationPath = SpecificationPath
+		cfg.SpecificationPath = DefaultSpecificationPath
 	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient

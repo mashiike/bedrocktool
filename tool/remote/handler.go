@@ -25,12 +25,13 @@ type Handler struct {
 }
 
 type HandlerConfig struct {
-	Endpoint        *url.URL
-	WorkerPath      string
-	ToolName        string
-	ToolDescription string
-	Worker          bedrocktool.Worker
-	Logger          *slog.Logger
+	Endpoint          *url.URL
+	WorkerPath        string
+	ToolName          string
+	ToolDescription   string
+	SpecificationPath string
+	Worker            bedrocktool.Worker
+	Logger            *slog.Logger
 }
 
 var _ http.Handler = (*Handler)(nil)
@@ -47,7 +48,10 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 		return nil, errors.New("endpoint is required")
 	}
 	h.workerEndpoint = cfg.Endpoint.JoinPath(cfg.WorkerPath)
-	h.specificationEndpoint = cfg.Endpoint.JoinPath(SpecificationPath)
+	if cfg.SpecificationPath == "" {
+		cfg.SpecificationPath = DefaultSpecificationPath
+	}
+	h.specificationEndpoint = cfg.Endpoint.JoinPath(cfg.SpecificationPath)
 	if cfg.Worker == nil {
 		return nil, errors.New("worker is required")
 	}
