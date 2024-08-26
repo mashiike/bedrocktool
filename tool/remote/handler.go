@@ -177,11 +177,15 @@ func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Reques
 		h.cfg.MethodNotAllowedHandler(w, req)
 		return
 	}
+	workerEndpoint := *h.workerEndpoint
+	if workerEndpoint.Host == "" {
+		workerEndpoint.Host = req.Host
+	}
 	spec := Specification{
 		Name:           h.cfg.ToolName,
 		Description:    h.cfg.ToolDescription,
 		InputSchema:    h.inputSchema,
-		WorkerEndpoint: h.workerEndpoint.String(),
+		WorkerEndpoint: workerEndpoint.String(),
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(spec); err != nil {
