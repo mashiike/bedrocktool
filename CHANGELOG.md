@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.5.0](https://github.com/mashiike/bedrocktool/compare/v0.4.1...v0.5.0) - 2024-08-27
+- Allow WorkerEndpoint is relative URL by @mashiike in https://github.com/mashiike/bedrocktool/pull/38
+- Bump github.com/aws/aws-sdk-go-v2/config from 1.27.28 to 1.27.31 in the aws-sdk-go-v2 group by @dependabot in https://github.com/mashiike/bedrocktool/pull/37
+
 ## [v0.4.1](https://github.com/mashiike/bedrocktool/compare/v0.4.0...v0.4.1) - 2024-08-26
 - fix panic by @mashiike in https://github.com/mashiike/bedrocktool/pull/35
 
