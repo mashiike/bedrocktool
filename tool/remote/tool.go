@@ -70,13 +70,14 @@ func (sc *SpecificationCache) Delete(name string) {
 var DefaultSpecificationCache = NewSpecificationCache(15 * time.Minute)
 
 type Tool struct {
-	endpoint    *url.URL
-	spec        Specification
-	newReqFunc  RequestConstructor
-	inputSchema document.Interface
-	client      *http.Client
-	newErr      func(error) (types.ToolResultBlock, error)
-	signer      func(*http.Request, string) (*http.Request, error)
+	endpoint     *url.URL
+	baseEndpoint *url.URL
+	spec         Specification
+	newReqFunc   RequestConstructor
+	inputSchema  document.Interface
+	client       *http.Client
+	newErr       func(error) (types.ToolResultBlock, error)
+	signer       func(*http.Request, string) (*http.Request, error)
 }
 
 type RequestConstructor func(ctx context.Context, method string, url string, toolUse types.ToolUseBlock) (*http.Request, error)
@@ -144,13 +145,13 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	u = u.JoinPath(cfg.SpecificationPath)
 	t := &Tool{
-		endpoint:   u,
-		newReqFunc: cfg.RequestConstructor,
-		client:     cfg.HTTPClient,
-		newErr:     cfg.ErrorConstractor,
-		signer:     cfg.RequestSigner,
+		endpoint:     u.JoinPath(cfg.SpecificationPath),
+		baseEndpoint: u,
+		newReqFunc:   cfg.RequestConstructor,
+		client:       cfg.HTTPClient,
+		newErr:       cfg.ErrorConstractor,
+		signer:       cfg.RequestSigner,
 	}
 	spec, ok := cfg.SpecificationCache.Get(u.String())
 	if !ok {
@@ -192,6 +193,24 @@ func (t *Tool) fetchSpecification(ctx context.Context) (Specification, error) {
 	var spec Specification
 	if err := json.NewDecoder(resp.Body).Decode(&spec); err != nil {
 		return Specification{}, err
+	}
+	workerEndpoint, err := url.Parse(spec.WorkerEndpoint)
+	if err != nil {
+		return Specification{}, fmt.Errorf("failed to parse worker endpoint; %w", err)
+	}
+	if !workerEndpoint.IsAbs() {
+		workerEndpoint = t.baseEndpoint.ResolveReference(workerEndpoint)
+	}
+	spec.WorkerEndpoint = workerEndpoint.String()
+	if spec.VerifyEndpoint != "" {
+		verifyEndpoint, err := url.Parse(spec.VerifyEndpoint)
+		if err != nil {
+			return Specification{}, fmt.Errorf("failed to parse verify endpoint; %w", err)
+		}
+		if !verifyEndpoint.IsAbs() {
+			verifyEndpoint = t.baseEndpoint.ResolveReference(verifyEndpoint)
+		}
+		spec.VerifyEndpoint = verifyEndpoint.String()
 	}
 	return spec, nil
 }
