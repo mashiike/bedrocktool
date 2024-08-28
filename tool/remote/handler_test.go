@@ -64,7 +64,7 @@ func TestHandler(t *testing.T) {
       "when"
     ]
   },
-  "worker_endpoint": "http://localhost:8080/worker/execute"
+  "worker_endpoint": "/worker/execute"
 }`
 
 	require.JSONEq(t, expected, specResp.Body.String())

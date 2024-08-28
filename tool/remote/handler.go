@@ -52,9 +52,7 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 		return nil, errors.New("worker is required")
 	}
 	if cfg.Endpoint == nil {
-		cfg.Endpoint = &url.URL{
-			Scheme: "https",
-		}
+		cfg.Endpoint = &url.URL{}
 	}
 	h.workerEndpoint = cfg.Endpoint.JoinPath(cfg.WorkerPath)
 	if cfg.SpecificationPath == "" {
@@ -198,7 +196,10 @@ func (h *Handler) SpecificationHandler() http.Handler {
 
 func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	workerEndpoint := *h.workerEndpoint
+	workerEndpoint := h.workerEndpoint
+	if !workerEndpoint.IsAbs() && !strings.HasPrefix(workerEndpoint.Path, "/") {
+		workerEndpoint.Path = "/" + workerEndpoint.Path
+	}
 	spec := Specification{
 		Name:           h.cfg.ToolName,
 		Description:    h.cfg.ToolDescription,
