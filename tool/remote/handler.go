@@ -199,10 +199,6 @@ func (h *Handler) SpecificationHandler() http.Handler {
 func (h *Handler) serveHTTPSpecification(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	workerEndpoint := *h.workerEndpoint
-	if workerEndpoint.Host == "" {
-		workerEndpoint.Host = req.Host
-		workerEndpoint.Scheme = req.URL.Scheme
-	}
 	spec := Specification{
 		Name:           h.cfg.ToolName,
 		Description:    h.cfg.ToolDescription,
