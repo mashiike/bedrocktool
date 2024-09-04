@@ -19,10 +19,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient, temp bool) {
+type ClockWorkerInput struct {
+	Location string `json:"location,omitempty" jsonschema:"default=Real"`
+}
+
+var ToolDescription = `Return current time in RFC3339 format
+If the location is different, please call the tool individually. Please do not infer this as it cannot be absorbed by calculations such as time difference.
+If you are asked for two or more locations, please call the tool for each location at the same time to reduce time lag.
+`
+
+type testDispacherConverseCase struct {
+	client BedrockConverseAPIClient
+	temp   bool
+	mssage string
+}
+
+func (tc testDispacherConverseCase) Run(tb testing.TB) {
+	require.NotNil(tb, tc.client)
+	if tc.mssage == "" {
+		tc.mssage = "What time is it now?"
+	}
 	cleanup := flextime.Set(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 	defer cleanup()
-	d := NewWithClient(client)
+	d := NewWithClient(tc.client)
 	var isUse atomic.Bool
 	var totalInputTokens, totalOutputTokens atomic.Int64
 	d.OnAfterModelCall(func(_ context.Context, _ *bedrockruntime.ConverseInput, output *bedrockruntime.ConverseOutput) {
@@ -33,37 +52,30 @@ func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient, temp 
 		}
 	})
 	ctx := context.Background()
-	if temp {
+	worker := NewWorker(func(ctx context.Context, input ClockWorkerInput) (types.ToolResultBlock, error) {
+		isUse.Store(true)
+		now := flextime.Now()
+		return types.ToolResultBlock{
+			Content: []types.ToolResultContentBlock{
+				&types.ToolResultContentBlockMemberText{
+					Value: now.Format(time.RFC3339),
+				},
+			},
+		}, nil
+	})
+	if tc.temp {
 		var ts *ToolSet
 		ctx, ts = WithToolSet(ctx)
 		ts.Register(
 			"clock",
-			"Return current time in RFC3339 format",
-			NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
-				isUse.Store(true)
-				return types.ToolResultBlock{
-					Content: []types.ToolResultContentBlock{
-						&types.ToolResultContentBlockMemberText{
-							Value: flextime.Now().Format(time.RFC3339),
-						},
-					},
-				}, nil
-			}),
+			ToolDescription,
+			worker,
 		)
 	} else {
 		d.Register(
 			"clock",
-			"Return current time in RFC3339 format",
-			NewWorker(func(ctx context.Context, _ EmptyWorkerInput) (types.ToolResultBlock, error) {
-				isUse.Store(true)
-				return types.ToolResultBlock{
-					Content: []types.ToolResultContentBlock{
-						&types.ToolResultContentBlockMemberText{
-							Value: flextime.Now().Format(time.RFC3339),
-						},
-					},
-				}, nil
-			}),
+			ToolDescription,
+			worker,
 		)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -75,7 +87,7 @@ func testDispacherConverse(tb testing.TB, client BedrockConverseAPIClient, temp 
 				Role: types.ConversationRoleUser,
 				Content: []types.ContentBlock{
 					&types.ContentBlockMemberText{
-						Value: "What time is it now?",
+						Value: tc.mssage,
 					},
 				},
 			},
@@ -114,7 +126,25 @@ func TestDispacherConverseWithAWS(t *testing.T) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	require.NoError(t, err)
 	client := bedrockruntime.NewFromConfig(cfg)
-	testDispacherConverse(t, client, false)
+	tc := testDispacherConverseCase{
+		client: client,
+	}
+	tc.Run(t)
+}
+
+func TestDispacherConverseWithAWS__WithLocation(t *testing.T) {
+	if !strings.EqualFold(os.Getenv("TEST_WITH_AWS"), "true") {
+		t.Skip("set TEST_WITH_AWS to run this test")
+	}
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	require.NoError(t, err)
+	client := bedrockruntime.NewFromConfig(cfg)
+	tc := testDispacherConverseCase{
+		client: client,
+		mssage: "What time is it now in Location1 ~ Location10?",
+	}
+	tc.Run(t)
 }
 
 type mockClient struct {
@@ -179,12 +209,17 @@ func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 				&types.ToolMemberToolSpec{
 					Value: types.ToolSpecification{
 						Name:        aws.String("clock"),
-						Description: aws.String("Return current time in RFC3339 format"),
+						Description: aws.String(ToolDescription),
 						InputSchema: &types.ToolInputSchemaMemberJson{
 							Value: document.NewLazyDocument(map[string]interface{}{
-								"$id":                  "https://github.com/mashiike/bedrocktool/empty-worker-input",
-								"type":                 "object",
-								"properties":           map[string]interface{}{},
+								"$id":  "https://github.com/mashiike/bedrocktool/clock-worker-input",
+								"type": "object",
+								"properties": map[string]interface{}{
+									"location": map[string]interface{}{
+										"default": "Real",
+										"type":    "string",
+									},
+								},
 								"additionalProperties": false,
 							}),
 						},
@@ -204,7 +239,7 @@ func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 						Value: types.ToolUseBlock{
 							Name:      aws.String("clock"),
 							ToolUseId: aws.String("tooluse_********"),
-							Input:     document.NewLazyDocument(nil),
+							Input:     document.NewLazyDocument(map[string]interface{}{"location": "Real"}),
 						},
 					},
 				},
@@ -235,7 +270,7 @@ func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 						Value: types.ToolUseBlock{
 							Name:      aws.String("clock"),
 							ToolUseId: aws.String("tooluse_********"),
-							Input:     document.NewLazyDocument(nil),
+							Input:     document.NewLazyDocument(map[string]interface{}{"location": "Real"}),
 						},
 					},
 				},
@@ -261,12 +296,17 @@ func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 				&types.ToolMemberToolSpec{
 					Value: types.ToolSpecification{
 						Name:        aws.String("clock"),
-						Description: aws.String("Return current time in RFC3339 format"),
+						Description: aws.String(ToolDescription),
 						InputSchema: &types.ToolInputSchemaMemberJson{
 							Value: document.NewLazyDocument(map[string]interface{}{
-								"$id":                  "https://github.com/mashiike/bedrocktool/empty-worker-input",
-								"type":                 "object",
-								"properties":           map[string]interface{}{},
+								"$id":  "https://github.com/mashiike/bedrocktool/clock-worker-input",
+								"type": "object",
+								"properties": map[string]interface{}{
+									"location": map[string]interface{}{
+										"default": "Real",
+										"type":    "string",
+									},
+								},
 								"additionalProperties": false,
 							}),
 						},
@@ -294,7 +334,11 @@ func testDispacherConverseWithMock(tb testing.TB, temp bool) {
 			OutputTokens: aws.Int32(1),
 		},
 	}, nil)
-	testDispacherConverse(tb, client, temp)
+	tc := testDispacherConverseCase{
+		client: client,
+		temp:   temp,
+	}
+	tc.Run(tb)
 }
 
 func TestTemporaryToolSet(t *testing.T) {
@@ -313,7 +357,7 @@ func TestTemporaryToolSet(t *testing.T) {
 	})
 	d.Register(
 		"clock",
-		"Return current time in RFC3339 format",
+		ToolDescription,
 		clockWorkerExpected,
 	)
 	ctxWithTs, ts := WithToolSet(ctx)
