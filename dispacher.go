@@ -179,12 +179,16 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 		case types.StopReasonEndTurn, types.StopReasonMaxTokens, types.StopReasonStopSequence, types.StopReasonContentFiltered:
 			return cc.OutputMessages(), nil
 		case types.StopReasonToolUse:
-			msgs, err := d.useTool(cctx, currentMessage)
+			contents, err := d.useTool(cctx, currentMessage)
 			if err != nil {
 				return cc.OutputMessages(), err
 			}
-			cc.appendOutputMessages(msgs...)
-			inputMessages = append(inputMessages, msgs...)
+			msg := types.Message{
+				Role:    types.ConversationRoleUser,
+				Content: contents,
+			}
+			cc.appendOutputMessages(msg)
+			inputMessages = append(inputMessages, msg)
 		default:
 			d.logger.WarnContext(cctx, "unexpected stop reason", "reason", resp.StopReason)
 			return cc.OutputMessages(), nil
@@ -192,9 +196,9 @@ func (d *Dispacher) Converse(ctx context.Context, params *bedrockruntime.Convers
 	}
 }
 
-func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Message, error) {
-	var messages []types.Message
-	var messageMu sync.Mutex
+func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.ContentBlock, error) {
+	var contents []types.ContentBlock
+	var contentMu sync.Mutex
 	var wg sync.WaitGroup
 	toolUseCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -208,71 +212,62 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 		case *types.ContentBlockMemberToolUse:
 			if c.Value.Name == nil {
 				d.logger.DebugContext(ctx, "tool use content has no name", "content", fmt.Sprintf("%T", c))
-				messageMu.Lock()
-				messages = append(messages, types.Message{
-					Role: types.ConversationRoleUser,
-					Content: []types.ContentBlock{
-						&types.ContentBlockMemberToolResult{
-							Value: types.ToolResultBlock{
-								ToolUseId: c.Value.ToolUseId,
-								Content: []types.ToolResultContentBlock{
-									&types.ToolResultContentBlockMemberText{
-										Value: "tool name is required",
-									},
+				contentMu.Lock()
+				contents = append(contents,
+					&types.ContentBlockMemberToolResult{
+						Value: types.ToolResultBlock{
+							ToolUseId: c.Value.ToolUseId,
+							Content: []types.ToolResultContentBlock{
+								&types.ToolResultContentBlockMemberText{
+									Value: "tool name is required",
 								},
-								Status: types.ToolResultStatusError,
 							},
+							Status: types.ToolResultStatusError,
 						},
 					},
-				})
-				messageMu.Unlock()
+				)
+				contentMu.Unlock()
 				continue
 			}
 			worker, ok := d.ResolveWorker(ctx, *c.Value.Name)
 			if !ok {
 				d.logger.WarnContext(ctx, "tool not found", "name", *c.Value.Name)
-				messageMu.Lock()
-				messages = append(messages, types.Message{
-					Role: types.ConversationRoleUser,
-					Content: []types.ContentBlock{
-						&types.ContentBlockMemberToolResult{
-							Value: types.ToolResultBlock{
-								ToolUseId: c.Value.ToolUseId,
-								Content: []types.ToolResultContentBlock{
-									&types.ToolResultContentBlockMemberText{
-										Value: "tool not found",
-									},
+				contentMu.Lock()
+				contents = append(contents,
+					&types.ContentBlockMemberToolResult{
+						Value: types.ToolResultBlock{
+							ToolUseId: c.Value.ToolUseId,
+							Content: []types.ToolResultContentBlock{
+								&types.ToolResultContentBlockMemberText{
+									Value: "tool not found",
 								},
-								Status: types.ToolResultStatusError,
 							},
+							Status: types.ToolResultStatusError,
 						},
 					},
-				})
-				messageMu.Unlock()
+				)
+				contentMu.Unlock()
 				continue
 			}
 			wg.Add(1)
 			go func(c *types.ContentBlockMemberToolUse) {
 				defer func() {
 					if r := recover(); r != nil {
-						messageMu.Lock()
-						messages = append(messages, types.Message{
-							Role: types.ConversationRoleUser,
-							Content: []types.ContentBlock{
-								&types.ContentBlockMemberToolResult{
-									Value: types.ToolResultBlock{
-										ToolUseId: c.Value.ToolUseId,
-										Content: []types.ToolResultContentBlock{
-											&types.ToolResultContentBlockMemberText{
-												Value: fmt.Sprintf("panic: %v", r),
-											},
+						contentMu.Lock()
+						contents = append(contents,
+							&types.ContentBlockMemberToolResult{
+								Value: types.ToolResultBlock{
+									ToolUseId: c.Value.ToolUseId,
+									Content: []types.ToolResultContentBlock{
+										&types.ToolResultContentBlockMemberText{
+											Value: fmt.Sprintf("panic: %v", r),
 										},
-										Status: types.ToolResultStatusError,
 									},
+									Status: types.ToolResultStatusError,
 								},
 							},
-						})
-						messageMu.Unlock()
+						)
+						contentMu.Unlock()
 					}
 					wg.Done()
 				}()
@@ -290,21 +285,19 @@ func (d *Dispacher) useTool(ctx context.Context, msg types.Message) ([]types.Mes
 				}
 				toolResultBlock.ToolUseId = c.Value.ToolUseId
 				d.handleAfterToolUse(ctx, c, toolResultBlock)
-				messageMu.Lock()
-				messages = append(messages, types.Message{
-					Role: types.ConversationRoleUser,
-					Content: []types.ContentBlock{
-						&types.ContentBlockMemberToolResult{Value: toolResultBlock},
-					},
-				})
-				messageMu.Unlock()
+				contentMu.Lock()
+				contents = append(
+					contents,
+					&types.ContentBlockMemberToolResult{Value: toolResultBlock},
+				)
+				contentMu.Unlock()
 			}(c)
 		default:
 			// pass
 		}
 	}
 	wg.Wait()
-	return messages, nil
+	return contents, nil
 }
 
 // Worker returns the worker registered with the specified name.
