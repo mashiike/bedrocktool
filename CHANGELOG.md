@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.0](https://github.com/mashiike/bedrocktool/compare/v0.5.2...v0.6.0) - 2024-09-04
+- Bump github.com/aws/aws-sdk-go-v2/service/bedrockruntime from 1.15.1 to 1.16.0 in the aws-sdk-go-v2 group by @dependabot in https://github.com/mashiike/bedrocktool/pull/44
+- if call parallel tool use, return format is invalid by @mashiike in https://github.com/mashiike/bedrocktool/pull/45
+
 ## [v0.5.2](https://github.com/mashiike/bedrocktool/compare/v0.5.1...v0.5.2) - 2024-08-28
 - fix handler allow not abs url by @mashiike in https://github.com/mashiike/bedrocktool/pull/42
 
