@@ -4,7 +4,7 @@ go 1.21.0
 
 require (
 	github.com/Songmu/flextime v0.1.0
-	github.com/aws/aws-sdk-go-v2 v1.30.4
+	github.com/aws/aws-sdk-go-v2 v1.30.5
 	github.com/aws/aws-sdk-go-v2/config v1.27.31
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.16.0
 	github.com/invopop/jsonschema v0.12.0
