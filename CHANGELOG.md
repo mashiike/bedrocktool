@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.7.0](https://github.com/mashiike/bedrocktool/compare/v0.6.0...v0.7.0) - 2024-09-17
+- extra spec by @mashiike in https://github.com/mashiike/bedrocktool/pull/50
+- Bump the aws-sdk-go-v2 group across 1 directory with 2 updates by @dependabot in https://github.com/mashiike/bedrocktool/pull/49
+- add response validator to remote tool by @mashiike in https://github.com/mashiike/bedrocktool/pull/52
+
 ## [v0.6.0](https://github.com/mashiike/bedrocktool/compare/v0.5.2...v0.6.0) - 2024-09-04
 - Bump github.com/aws/aws-sdk-go-v2/service/bedrockruntime from 1.15.1 to 1.16.0 in the aws-sdk-go-v2 group by @dependabot in https://github.com/mashiike/bedrocktool/pull/44
 - if call parallel tool use, return format is invalid by @mashiike in https://github.com/mashiike/bedrocktool/pull/45
