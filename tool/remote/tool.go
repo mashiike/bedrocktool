@@ -69,14 +69,15 @@ func (sc *SpecificationCache) Delete(name string) {
 var DefaultSpecificationCache = NewSpecificationCache(15 * time.Minute)
 
 type Tool struct {
-	endpoint     *url.URL
-	baseEndpoint *url.URL
-	spec         Specification
-	newReqFunc   RequestConstructor
-	inputSchema  document.Interface
-	client       *http.Client
-	newErr       func(error) (types.ToolResultBlock, error)
-	signer       func(*http.Request, string) (*http.Request, error)
+	endpoint      *url.URL
+	baseEndpoint  *url.URL
+	spec          Specification
+	newReqFunc    RequestConstructor
+	inputSchema   document.Interface
+	client        *http.Client
+	newErr        func(error) (types.ToolResultBlock, error)
+	signer        func(*http.Request, string) (*http.Request, error)
+	respValidator func(*http.Response, *http.Request) error
 }
 
 type RequestConstructor func(ctx context.Context, method string, url string, toolUse types.ToolUseBlock) (*http.Request, error)
@@ -108,6 +109,7 @@ type ToolConfig struct {
 	HTTPClient         *http.Client
 	ErrorConstractor   func(error) (types.ToolResultBlock, error)
 	RequestSigner      func(req *http.Request, subject string) (*http.Request, error)
+	ResponseValidator  func(resp *http.Response, req *http.Request) error
 }
 
 type remoteWorker struct {
@@ -140,17 +142,23 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 			return req, nil
 		}
 	}
+	if cfg.ResponseValidator == nil {
+		cfg.ResponseValidator = func(_ *http.Response, _ *http.Request) error {
+			return nil
+		}
+	}
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil {
 		return nil, err
 	}
 	t := &Tool{
-		endpoint:     u.JoinPath(cfg.SpecificationPath),
-		baseEndpoint: u,
-		newReqFunc:   cfg.RequestConstructor,
-		client:       cfg.HTTPClient,
-		newErr:       cfg.ErrorConstractor,
-		signer:       cfg.RequestSigner,
+		endpoint:      u.JoinPath(cfg.SpecificationPath),
+		baseEndpoint:  u,
+		newReqFunc:    cfg.RequestConstructor,
+		client:        cfg.HTTPClient,
+		newErr:        cfg.ErrorConstractor,
+		signer:        cfg.RequestSigner,
+		respValidator: cfg.ResponseValidator,
 	}
 	spec, ok := cfg.SpecificationCache.Get(u.String())
 	if !ok {
@@ -172,6 +180,10 @@ func NewTool(ctx context.Context, cfg ToolConfig) (*Tool, error) {
 	return t, nil
 }
 
+func (t *Tool) SignRequest(req *http.Request, subject string) (*http.Request, error) {
+	return t.signer(req, subject)
+}
+
 func (t *Tool) fetchSpecification(ctx context.Context) (Specification, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.endpoint.String(), nil)
 	if err != nil {
@@ -186,6 +198,9 @@ func (t *Tool) fetchSpecification(ctx context.Context) (Specification, error) {
 		return Specification{}, err
 	}
 	defer resp.Body.Close()
+	if err := t.respValidator(resp, req); err != nil {
+		return Specification{}, err
+	}
 	if resp.StatusCode != http.StatusOK {
 		return Specification{}, errors.New("failed to fetch specification")
 	}
@@ -245,6 +260,9 @@ func (w *remoteWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock) 
 	resp, err := w.tool.client.Do(req)
 	if err != nil {
 		return w.tool.newErr(fmt.Errorf("failed to fetch url; %w", err))
+	}
+	if err := w.tool.respValidator(resp, req); err != nil {
+		return w.tool.newErr(fmt.Errorf("failed to validate response; %w", err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
