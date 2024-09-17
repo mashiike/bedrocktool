@@ -1,6 +1,9 @@
 package remote
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type Specification struct {
 	// Name of the tool.
@@ -12,7 +15,7 @@ type Specification struct {
 	// WorkerEndpoint of the tool.
 	WorkerEndpoint string `json:"worker_endpoint"`
 	// Extra
-	Extra map[string]json.RawMessage `json:"-,omitempty"`
+	Extra json.RawMessage `json:"-,omitempty"`
 }
 
 var DefaultSpecificationPath = "/.well-known/bedrock-tool-specification"
@@ -30,14 +33,27 @@ func (s *Specification) UnmarshalJSON(data []byte) error {
 	delete(extra, "description")
 	delete(extra, "input_schema")
 	delete(extra, "worker_endpoint")
-	s.Extra = extra
+	if len(extra) == 0 {
+		return nil
+	}
+	extraJSON, err := json.Marshal(extra)
+	if err != nil {
+		return fmt.Errorf("failed to marshal extra fields; %w", err)
+	}
+	s.Extra = extraJSON
 	return nil
 }
 
 func (s *Specification) MarshalJSON() ([]byte, error) {
 	data := make(map[string]any, len(s.Extra)+4)
-	for k, v := range s.Extra {
-		data[k] = v
+	if s.Extra != nil {
+		var extra map[string]json.RawMessage
+		if err := json.Unmarshal(s.Extra, &extra); err != nil {
+			return nil, err
+		}
+		for k, v := range extra {
+			data[k] = v
+		}
 	}
 	data["name"] = s.Name
 	data["description"] = s.Description

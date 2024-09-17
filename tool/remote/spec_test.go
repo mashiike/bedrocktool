@@ -13,10 +13,7 @@ func TestSpecification_MarshalJSON(t *testing.T) {
 		Description:    "A tool for testing",
 		InputSchema:    json.RawMessage(`{"type": "object", "properties": {"input": {"type": "string"}}}`),
 		WorkerEndpoint: "http://localhost:8080/worker",
-		Extra: map[string]json.RawMessage{
-			"extra_field_1": json.RawMessage(`"extra_value_1"`),
-			"extra_field_2": json.RawMessage(`{"nested": "value"}`),
-		},
+		Extra:          json.RawMessage(`{"extra_field_1": "extra_value_1", "extra_field_2": {"nested": "value"}}`),
 	}
 
 	data, err := spec.MarshalJSON()
@@ -60,8 +57,7 @@ func TestSpecification_UnmarshalJSON(t *testing.T) {
 	require.Equal(t, "A tool for testing", spec.Description)
 	require.JSONEq(t, `{"type": "object", "properties": {"input": {"type": "string"}}}`, string(spec.InputSchema))
 	require.Equal(t, "http://localhost:8080/worker", spec.WorkerEndpoint)
-	require.JSONEq(t, `"extra_value_1"`, string(spec.Extra["extra_field_1"]))
-	require.JSONEq(t, `{"nested": "value"}`, string(spec.Extra["extra_field_2"]))
+	require.JSONEq(t, `{"extra_field_1": "extra_value_1", "extra_field_2": {"nested": "value"}}`, string(spec.Extra))
 }
 
 func TestSpecification_EmptyExtra(t *testing.T) {
@@ -70,7 +66,6 @@ func TestSpecification_EmptyExtra(t *testing.T) {
 		Description:    "A tool for testing",
 		InputSchema:    json.RawMessage(`{"type": "object", "properties": {"input": {"type": "string"}}}`),
 		WorkerEndpoint: "http://localhost:8080/worker",
-		Extra:          map[string]json.RawMessage{},
 	}
 
 	data, err := spec.MarshalJSON()
