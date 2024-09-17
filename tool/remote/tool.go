@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -202,16 +201,6 @@ func (t *Tool) fetchSpecification(ctx context.Context) (Specification, error) {
 		workerEndpoint = t.baseEndpoint.ResolveReference(workerEndpoint)
 	}
 	spec.WorkerEndpoint = workerEndpoint.String()
-	if spec.VerifyEndpoint != "" {
-		verifyEndpoint, err := url.Parse(spec.VerifyEndpoint)
-		if err != nil {
-			return Specification{}, fmt.Errorf("failed to parse verify endpoint; %w", err)
-		}
-		if !verifyEndpoint.IsAbs() {
-			verifyEndpoint = t.baseEndpoint.ResolveReference(verifyEndpoint)
-		}
-		spec.VerifyEndpoint = verifyEndpoint.String()
-	}
 	return spec, nil
 }
 
@@ -270,27 +259,4 @@ func (w *remoteWorker) Execute(ctx context.Context, toolUse types.ToolUseBlock) 
 		return w.tool.newErr(fmt.Errorf("failed to marshal response; %w", err))
 	}
 	return trb, nil
-}
-
-func (t *Tool) Verify(ctx context.Context, body io.Reader) error {
-	if t.spec.VerifyEndpoint == "" {
-		return nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.spec.VerifyEndpoint, body)
-	if err != nil {
-		return err
-	}
-	req, err = t.signer(req, "verify/"+t.Name())
-	if err != nil {
-		return err
-	}
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("status code is not 200")
-	}
-	return nil
 }
