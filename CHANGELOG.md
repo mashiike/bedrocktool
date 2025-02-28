@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.7.1](https://github.com/mashiike/bedrocktool/compare/v0.7.0...v0.7.1) - 2025-02-28
+- update go 1.24 and moduels by @mashiike in https://github.com/mashiike/bedrocktool/pull/71
+
 ## [v0.7.0](https://github.com/mashiike/bedrocktool/compare/v0.6.0...v0.7.0) - 2024-09-17
 - extra spec by @mashiike in https://github.com/mashiike/bedrocktool/pull/50
 - Bump the aws-sdk-go-v2 group across 1 directory with 2 updates by @dependabot in https://github.com/mashiike/bedrocktool/pull/49
